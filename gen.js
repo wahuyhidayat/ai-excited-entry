@@ -43,6 +43,12 @@ for (let y = 0; y < H; y++) {
     const n = noise(x * 0.012 + r * 9, y * 0.012 - th * 1.5);
     const n2 = noise(x * 0.045 - 40, y * 0.045 + 17);
 
+    // secondary echo ring: a faint halo where the burst's shockwave settles,
+    // rippled by the same arm harmonics so it reads as depth, not a circle
+    const ringR = 0.30 + 0.02 * n;
+    const ring = Math.exp(-((r - ringR) * (r - ringR)) / 0.0016)
+      * (0.28 + 0.22 * Math.sin(th * 2 + 0.7) * Math.sin(th * 3 - 1.9));
+
     // energy density: tight white-hot core, sharp decaying arms
     let e = Math.exp(-r * 18) * 1.6
           + Math.exp(-r * 7.5) * 2.6
@@ -50,15 +56,18 @@ for (let y = 0; y < H; y++) {
           + Math.pow(Math.max(0, arm), 2.2) * Math.exp(-r * 2.3) * (0.7 + 0.5 * n)
           + Math.pow(Math.max(0, arm2), 2.0) * Math.exp(-r * 2.8) * (0.5 + 0.45 * n2)
           + Math.pow(Math.max(0, arm3), 3.0) * Math.exp(-r * 3.4) * (0.45 + 0.4 * n);
+    e += ring * (0.35 + 0.3 * n2);
     // S-curve contrast: crush the mids, pop the highlights
     e = clamp(e, 0, 1);
     e = e < 0.5 ? 2 * e * e : 1 - 2 * (1 - e) * (1 - e);
     e += 0.12 * n * (1 - r);
 
     // radial motion streaks: thin angular filaments streaming outward
-    const spoke = Math.sin(th * 24 + r * 3.0);
-    const streak = Math.pow(Math.max(0, spoke), 12)
-      * Math.exp(-r * 1.9) * (1 - r) * (0.22 + 0.18 * n2);
+    const spoke = Math.sin(th * 40 + r * 3.6);
+    const spoke2 = Math.sin(th * 61 - r * 5.2 + 2.4);
+    const streak = (Math.pow(Math.max(0, spoke), 12) * (0.22 + 0.18 * n2)
+      + Math.pow(Math.max(0, spoke2), 14) * (0.13 + 0.12 * n))
+      * Math.exp(-r * 1.9) * (1 - r);
     e = clamp(e + streak, 0, 1);
 
     // hue: deep indigo rim slammed into ember/gold arms
