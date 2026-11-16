@@ -44,7 +44,8 @@ for (let y = 0; y < H; y++) {
     const n2 = noise(x * 0.045 - 40, y * 0.045 + 17);
 
     // energy density: tight white-hot core, sharp decaying arms
-    let e = Math.exp(-r * 5.5) * 2.4
+    let e = Math.exp(-r * 18) * 1.6
+          + Math.exp(-r * 7.5) * 2.6
           + Math.exp(-r * 1.6) * 0.5
           + Math.pow(Math.max(0, arm), 2.2) * Math.exp(-r * 2.3) * (0.7 + 0.5 * n)
           + Math.pow(Math.max(0, arm2), 2.0) * Math.exp(-r * 2.8) * (0.5 + 0.45 * n2)
@@ -54,8 +55,14 @@ for (let y = 0; y < H; y++) {
     e = e < 0.5 ? 2 * e * e : 1 - 2 * (1 - e) * (1 - e);
     e += 0.12 * n * (1 - r);
 
-    // hue: electric magenta/violet core slammed into cyan/amber arms
-    let hue = 0.83 - th / (2 * Math.PI) * 0.5 + r * 0.62 + 0.25 * n;
+    // radial motion streaks: thin angular filaments streaming outward
+    const spoke = Math.sin(th * 24 + r * 3.0);
+    const streak = Math.pow(Math.max(0, spoke), 12)
+      * Math.exp(-r * 1.9) * (1 - r) * (0.22 + 0.18 * n2);
+    e = clamp(e + streak, 0, 1);
+
+    // hue: deep indigo rim slammed into ember/gold arms
+    let hue = 0.68 - th / (2 * Math.PI) * 0.18 + r * 0.34 + 0.12 * n;
     hue = ((hue % 1) + 1) % 1;
 
     // hsv -> rgb
