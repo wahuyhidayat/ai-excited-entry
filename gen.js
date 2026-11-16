@@ -33,28 +33,34 @@ for (let y = 0; y < H; y++) {
     const r = Math.hypot(dx, dy) / MAXR;          // 0..1
     const th = Math.atan2(dy, dx);                // -pi..pi
 
-    // spiral phase: two counter-wound arms
-    const twist = 9.0 * (1.0 - r * 0.55);
+    // spiral phase: three counter-wound arms, tighter twist for more motion
+    const twist = 13.0 * (1.0 - r * 0.5);
     const arm = Math.sin(th * 2 + r * twist * Math.PI);
     const arm2 = Math.sin(th * 3 - r * twist * Math.PI * 0.8 + 1.3);
+    const arm3 = Math.sin(th * 5 + r * twist * Math.PI * 1.4 + 4.1);
 
-    // flowing turbulence
-    const n = noise(x * 0.012 + r * 6, y * 0.012 - th);
-    const n2 = noise(x * 0.04 - 40, y * 0.04 + 17);
+    // flowing turbulence, stronger shear for a sense of rotation
+    const n = noise(x * 0.012 + r * 9, y * 0.012 - th * 1.5);
+    const n2 = noise(x * 0.045 - 40, y * 0.045 + 17);
 
-    // energy density: hot core, decaying arms, boosted by noise
-    let e = Math.exp(-r * 3.2) * 1.6
-          + Math.max(0, arm) * Math.exp(-r * 2.1) * (0.55 + 0.45 * n)
-          + Math.max(0, arm2) * Math.exp(-r * 2.6) * (0.4 + 0.4 * n2);
-    e += 0.10 * n * (1 - r);
+    // energy density: tight white-hot core, sharp decaying arms
+    let e = Math.exp(-r * 5.5) * 2.4
+          + Math.exp(-r * 1.6) * 0.5
+          + Math.pow(Math.max(0, arm), 2.2) * Math.exp(-r * 2.3) * (0.7 + 0.5 * n)
+          + Math.pow(Math.max(0, arm2), 2.0) * Math.exp(-r * 2.8) * (0.5 + 0.45 * n2)
+          + Math.pow(Math.max(0, arm3), 3.0) * Math.exp(-r * 3.4) * (0.45 + 0.4 * n);
+    // S-curve contrast: crush the mids, pop the highlights
+    e = clamp(e, 0, 1);
+    e = e < 0.5 ? 2 * e * e : 1 - 2 * (1 - e) * (1 - e);
+    e += 0.12 * n * (1 - r);
 
-    // hue drifts around the vortex -> violet/magenta core to cyan/orange arms
-    let hue = 0.78 - th / (2 * Math.PI) * 0.35 + r * 0.55 + 0.22 * n;
+    // hue: electric magenta/violet core slammed into cyan/amber arms
+    let hue = 0.83 - th / (2 * Math.PI) * 0.5 + r * 0.62 + 0.25 * n;
     hue = ((hue % 1) + 1) % 1;
 
     // hsv -> rgb
     const i = Math.floor(hue * 6), f = hue * 6 - i;
-    const s = clamp(0.75 + 0.25 * n2, 0, 1), v = clamp(e, 0, 1);
+    const s = clamp(0.95 + 0.05 * n2, 0, 1), v = clamp(e, 0, 1);
     const p = v * (1 - s), q = v * (1 - f * s), t = v * (1 - (1 - f) * s);
     let R, G, B;
     switch (i % 6) {
