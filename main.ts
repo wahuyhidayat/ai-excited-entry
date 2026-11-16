@@ -1,49 +1,62 @@
-// Validate entry.png, then copy it into the output directory.
-import { copyFileSync, mkdirSync, readFileSync } from 'node:fs';
+// main.ts — validate entry.png against the challenge constraints, then place
+// it in the output directory. Node 22, standard library only.
+import { copyFileSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-// PNG magic bytes plus the fixed IHDR layout: 4-byte length, 4-byte type,
-// then width/height as big-endian uint32.
-const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71]);
-const MAX_DIM = 1024;
+const MAX_DIM = 1024;          // pixels, per axis
+const MAX_BYTES = 1024 * 1024; // 1 MiB file-size ceiling
 
-// Standard CRC-32 table (same polynomial the PNG spec mandates).
-const CRC_TABLE = (() => {
-  const table = new Uint32Array(256);
-  for (let n = 0; n < 256; n++) {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    table[n] = c >>> 0;
-  }
-  return table;
-})();
+function fail(path: string, reason: string): never {
+  console.error(`invalid: ${path} — ${reason}`);
+  process.exit(1);
+}
 
-function validate(path) {
+function validate(path: string) {
+  const stat = statSync(path);
+  if (stat.size >= MAX_BYTES) fail(path, `${stat.size} bytes, must stay under 1 MiB`);
+
   const buf = readFileSync(path);
-  if (buf.length < 24 || !buf.subarray(0, 4).equals(PNG_SIGNATURE)) {
-    console.error(`error: ${path} is not a PNG file (bad signature)`);
-    process.exit(1);
+
+  // PNG signature: \x89PNG\r\n\x1a\n
+  if (!buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+    fail(path, 'bad PNG signature');
+  }
+  if (buf.length < 33) fail(path, 'file too short to contain a full IHDR chunk');
+
+  // First chunk must be IHDR; its 4-byte length field is always 13.
+  if (buf.readUInt32BE(8) !== 13 || buf.toString('ascii', 12, 16) !== 'IHDR') {
+    fail(path, 'first chunk is not a 13-byte IHDR');
   }
   const width = buf.readUInt32BE(16);
   const height = buf.readUInt32BE(20);
+  if (width === 0 || height === 0) fail(path, 'zero dimension');
   if (width > MAX_DIM || height > MAX_DIM) {
-    console.error(`error: ${path} is ${width}x${height}, exceeds ${MAX_DIM}x${MAX_DIM}`);
-    process.exit(1);
+    fail(path, `${width}x${height} exceeds the ${MAX_DIM}x${MAX_DIM} limit`);
   }
-  // IHDR: bytes 8..19 of the file (type + data); CRC is the 4 bytes after it.
-  const ihdr = buf.subarray(12, 29);
+
+  // Verify the IHDR CRC before trusting the header fields.
+  const CRC_TABLE = (() => {
+    const table = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      table[n] = c >>> 0;
+    }
+    return table;
+  })();
   let crc = 0xffffffff;
-  for (const byte of ihdr) crc = CRC_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
-  if (((crc ^ 0xffffffff) >>> 0) !== buf.readUInt32BE(29)) {
-    console.error(`error: ${path} has an invalid IHDR CRC`);
-    process.exit(1);
-  }
+  for (const byte of buf.subarray(12, 29)) crc = CRC_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  if ((crc ^ 0xffffffff) >>> 0 !== buf.readUInt32BE(29)) fail(path, 'IHDR CRC mismatch');
+
   return { width, height, bytes: buf.length };
 }
 
-const { width, height, bytes } = validate('entry.png');
-console.log(`entry.png: ${width}x${height}, ${bytes} bytes, valid`);
+const src = 'entry.png';
+const { width, height, bytes } = validate(src);
+console.log(`entry.png OK: ${width}x${height}, ${bytes} bytes (limits 1024x1024, <1 MiB)`);
+
 const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 mkdirSync(outDir, { recursive: true });
-copyFileSync('entry.png', join(outDir, 'entry.png'));
-console.log(`entry.png (${width}x${height}) copied -> ${join(outDir, 'entry.png')}`);
+const dest = join(outDir, 'entry.png');
+copyFileSync(src, dest);
+console.log(`copied to ${dest}`);
